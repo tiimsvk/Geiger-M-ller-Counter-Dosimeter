@@ -1,0 +1,1472 @@
+#-------------------------------------------
+# BUG AND REPAIR AND PLANNED
+#-------------------------------------------
+
+#-------------------------------------------
+# REVISION
+#-------------------------------------------
+# 2022.      - First version
+# 2023.      - Second version
+# 2024.01.06 - Third version
+
+#-------------------------------------------
+# FEATURES
+#-------------------------------------------
+# Gama and Beta radiation
+# Temperature and humidity
+# Alarm (manual ON/OFF)
+# 2X BUTTON 
+# LDR
+# DISPLAY
+# BATTERY
+
+#-------------------------------------------
+# GPIO Asocciate
+#-------------------------------------------
+# BMP280                      D1, D2
+# Display                     D1, D2
+# I2C Enable                  D8 GPIO15
+
+# Button Reset                RST
+# Button                      D3 GPIO0 / 
+
+# Status Led                  D4 GPIO02
+
+# Geiger pwm                  D5 GPIO14
+# Geiger pulse                D6 GPIO12
+# Geiger Buzzer               TX GPIO01 
+
+# USB present                 GPIO10
+
+# LDR                         D7 GPIO13
+# LDR measure                 GPO09 (capacitor dutytime)
+
+# Sleep prevent               GPIO03 RX
+
+# Battery                     VCC
+
+#-------------------------------------------
+# SUBTITUTIONS - basic definitions and description of the device
+#-------------------------------------------
+substitutions:
+  friendly_name: env-dosimeter
+  device_name: env-dosimeter
+  created_by: "StudioTiiM 2022-2024"
+  device_description: "Dozimeter Modul RadiationD-v1.1 (CAJOE) on battery whit display"
+
+#-------------------------------------------
+# DEFINE PINS AND VARIABILES
+# CIRCUIT AND MODULES - basic definitions and description of the device
+#-------------------------------------------
+
+ # ----- MCU -----
+  # Module: Ai-Thinker ESP8266-12F
+   # Circuit: Solder on adapter esp8266
+   # Power Consumption: 
+    # Peak start:     440mA
+    # Peak wifi:      272mA https://www.homeassistant-cz.cz/download/file.php?id=1185&mode=view) 
+    # Peak Normal:     71mA 
+    # Peak Wifi off:   22mA
+    # DeepSleep:     ~ 20μA
+   # Specification: Chip Family: ESP8266 / Chip Model: ESP8266EX / Chip ID: 00BC7BE5 / MAC Address: A4:E5:7C:BC:7B:E5 / Flash Size: 4MB / Flash Mode: dout / Flash Frequency: 40MHz
+
+   # Description pins:
+    # PINS ESP8266 | FUNCTION     | INPUT | OUTPUT | ADC | PWM | I2C(only one) | SPI  | RESISTOR             | BOOT       | FLASH   | HIGH AT BOOT | BOOT FAILS |
+    # -------------------------------------------------------------------------------------------------------------------------------------------------------------
+    # EN           |                                                                  | 10.0k PULLUP adapter |                                     |
+    # RST          |                                                                  | 12.0k PULLUP internal|                                     |
+    # ADC0      A0 | ANALOG ADC0  |       |        | OK  |     |               |      |                      |           |          |              |
+    # GPIO0     D3 | STRAPPING    | OK!   | OK!    |     | OK  | OK            |      | 10.0k PULLUP         | PULLUP    | pulldown | HIGH 110ms*6 | LOW
+    # GPIO01    TX | TX           | OK!*1 | OK     |     | OK  | OK            |      |                      |           |          | HIGH         | LOW
+    # GPIO02    D4 | ON BOARD LED | OK    | OK     |     | OK  | OK            |      | 10.0k PULLUP         | PULLUP    |          | HIGH 70ms*6  | LOW
+    # GPIO03    RX | RX           | OK    | OK!*1  |     | OK  | OK            |      |                      |           |          | HIGH         |
+    # GPIO04    D2 | SDA          | OK    | OK     |     | OK  | OK*2          |      |                      |           |          |              |
+    # GPIO05    D1 | SCL          | OK    | OK     |     | OK  | OK*2          |      |                      |           |          |              |
+    # GPIO06       | INTERNAL SPI |       |        |     |     |               | CLK  |                      |           |          |              |
+    # GPIO07       | INTERNAL SPI |       |        |     |     |               | MISO |                      |           |          |              |
+    # GPIO08       | INTERNAL SPI |       |        |     |     |               | MOSI |                      |           |          |              |
+    # GPIO09       | INTERNAL SPI | OK*7  | OK*7   |     |     |               | HD   |                      |           |          | HIGH         |
+    # GPIO10       | INTERNAL SPI | OK*7  | OK*7   |     |     |               | WP   |                      |           |          | HIGH         |
+    # GPIO11       | SPI CSC/CMD  |       |        |     |     |               | CS   |                      |           |          |              |
+    # GPIO12    D6 |              | OK    | OK     |     | OK  | OK            | MISO |                      |           |          | HIGH 110ms   |
+    # GPIO13    D7 |              | OK    | OK     |     | OK  | OK            | MOSI |                      |           |          | HIGH 110ms   |
+    # GPIO14    D5 |              | OK    | OK     |     | OK  | OK            | SCLK |                      |           |          | HIGH 110ms   |
+    # GPIO15    D8 | STRAPPING    | OK!   | OK!    |     | OK  | OK            | CS   | 10k PULLDOWN adapter | PULLDOWN  |          | LOW  110ms   | HIGH
+    # GPIO16    D0 | STRAPPING    | OK*4  | OK*5   |     | OK  | OK            |      | 470 -> RST*3         | PULLUP    | PULLUP   | HIGH 110ms*5 |
+
+    # *1 Disable hardware uart. logger baud_rate: 0
+    # *2 recommended I2C
+    # *3 Enable deep sleep (After enable sleep mode it is broken on any element, GPIO is still in the high state and if it is low, the mcu is reset)
+    # *4 No interrupt
+    # *5 after boot falls ~110ms to ~ 1V
+    # *6 oscillates
+    # *7 freeing up GPIO9 and GPIO10:
+     # Source: http://smarpl.com/content/esp8266-esp-201-module-freeing-gpio9-and-gpio10
+     # Since it is supported by both ESP8266 and flash chip (W25Q32FV or similar) the Quad I/O SPI flash interface 
+     # can be downgraded to Dual I/O SPI thus freeing two data lines (SD_DATA2 and SD_DATA3) and making them available 
+     # as GPIOs (GPIO9 and GPIO10, marked as D2 and D3 on ESP-201 board).
+      # HW Modifications:
+      # Chip: W25Q32FV
+       # Pinout: QUAD
+
+        # N.| GPIO   | ESP    | Pin | Scheme | Pin   | ESP    | GPIO   | N.
+        #                            +----+
+        # 1 | GPIO11 | SD_CMD | /CS -|°   |-  VCC   |   VCC  | VCC    | 8
+        # 2 | GPIO07 | SD_D0  | DO  -|    |-  /HOLD | SD_D2  | GPIO09 | 7
+        # 3 | GPIO10 | SD_D3  | /WP -|    |-  CLK   | SD_CLK | GPIO06 | 6
+        # 4 | GND    | GND    | GND -|    |-  DI    | SD_D1  | GPIO08 | 5
+        #                            +----+
+       # Pinout: DUAL
+       # platformio_options:
+       #   board_build.flash_mode: dio # releasing GPIO09 and GPIO10
+
+        # N.| GPIO   | ESP    | Pin | Scheme | Pin   | ESP    | GPIO   | N.
+        #                            +----+
+        # 1 | GPIO11 | SD_CMD | /CS -|°   |-  VCC   |   VCC  | VCC    | 8
+        # 2 | GPIO07 | SD_D0  | DO  -|    |-  /HOLD | GND    | GND    | 7
+        # 3 | GND    | GND    | /WP -|    |-  CLK   | SD_CLK | GPIO06 | 6
+        # 4 | GND    | GND    | GND -|    |-  DI    | SD_D1  | GPIO08 | 5
+        #                            +----+
+
+    # GPIO08 and GPIO09 pulldown invalid on boot
+    # Current draw 12mA max per GPIO
+    # ESP8266 GPIO Behaviour at Boot: https://rabbithole.wwwdotorg.org/2017/03/28/esp8266-gpio.html
+
+ # ----- TEMPERATURE / HUMIDITY -----
+  # Module: AHT20+BMP280 - pressure / humidity / temperature
+   # Specifications: Voltage: 2.8 ~ 5V / Operational Range: Temperature: -40 ~ +85°C Humidity: 0~100% Pressure: 300~1100 hPa / Accuracy: Temperature: +-1°C Humidity: +-3% Pressure: +-1Pa
+   # Circuit: Interface: I2C address: AHT 0x38, BMP 0x76 (pullup 4.7K internal)
+   # Power consumption: 
+
+ # ----- DISPLAY -----
+  # Model: SSD1306 128x32 OLED
+   # Specifications: Voltage: 3 ~ 5V / Dimension: 128x32, 0.91" / Working temperature -40 ~ 80 °C / Color: White
+   # Interface: I2C address: 0x3C (pullup 4.7K internal)
+   # Modifications: unsolder ldo 662k
+   # Power consumption: 
+  i2c_enable_pin: GPIO15 # D8
+
+ # ----- LEDS -----
+  # Modul: Status led
+   # Specification: 1x orange led unsolder on board blue led
+   # Circuit: 1kΩ resistor to GPIO
+   # Power consumption: 
+  status_pin: GPIO02 # D4
+
+ # ----- BATTERY -----
+  # Battery: 102050 3.7V 1000mAh Polymer Lithium Rechargeable Battery
+   # Specification: Size:About 50x20x10mm / Capacity: 1000mAh / Charge: 2.75 ~ 4.2V / Recharging-Discharging 0.5 ~ 1.0A / Working temperature -20 ~ 60 °C
+   # Protection: BMS 1S
+    # Chip: DW01 + 8205A
+    # Specification: overcharge 4.25V / discharge 2.5V / current 1A / overcurrent 2.5 A
+    # Power consumption: standby 3.6µA
+  battery_pin: VCC
+
+ # ----- CHARGING -----
+  # Module: USB TP4056 whitout BMS
+   # Specifications: Volatge in: 4.5 - 5.5V (8V max) out: 4.2V Accuracy: 1.5% / Max current: 1.0A (1.2A max) / Working temperature -40 ~ 80 °C
+   # Led: Standby indictor, charging and full charg,
+   # Modifications: 
+    # Resistor prog.
+     # Calculate: Ibat = Vprog / Rprog * 1200 = 1V / 2.2k * 1200 = 545mA
+    # Resiszor current limiter R400 changed PPTC fuse R110 1.1A
+   # Circuit 3: GND ->   -> GPIO -> 10k -> USB VCC
+  usb_present_pin: GPIO10
+  battery_low: "3.0" # 3.0V battery show only low battery on display 
+
+ # ----- LDO REGULATORS -----
+  # Module: holtek HT7833
+   # Specification: Voltage in 0-8 out fixed 3.3V 2% / max voltage drop 360mV / current max 0.5A / current standby 4μA / protection: overtemperature; current limiting
+   # Add parts out 3V3:
+    # Fuse: PPTC 6V 750mA
+    # Capacitor: 16V 470uF
+
+ # ----- AMBIENT LIGHT SENSOR -----
+  # Module: Photodiode 3mm 5516 5-16k
+   # Circuit: VCC -> Photodiode -> GPIO -> 10k -> GND
+  ldr_pin: GPIO13
+  ldr_measure_pin: GPIO09
+  # Settings display brigthness option
+  ambient_threshold_low: "1.769" # 
+  ambient_threshold_high: "2.0" # 
+  minimum_display_brightness: "0.0" # 
+
+ # ----- BUTTONS -----
+  # Module: SMD Push button 4pin 6x6x3.1mm
+   # Specification: max 12VDC / Rated current 0.1A / Resistance: Contact < 0.03Ω; isolation > 100MΩ / Life: 100 000 times
+   # Circuit: GND -> Button -> GPIO + 10kΩ -> VCC
+  # This button is also Flash button when reset button hold
+  button1_pin: GPIO0 # D3
+  button_reset: RST
+
+ # ----- TEMPERATURE / PRESSURE SENSORS -----
+  # Module: BMP280 - pressure / temperature
+   # Specifications: Voltage: 1.71 ~ 3.6V / Operational Range: Temperature: -40 ~ +85°C Pressure: 300~1100 hPa / Accuracy: Temperature: +-0.01°C Pressure: +-1Pa
+   # Circuit: Interface: I2C address: SDO LOW : 0x76 (SDO HIGH: 0x77)
+   # Power consumption: 0.027mA 1Hz sampling rate (Peak: 1.12mA)
+   # UPDATE AFTER BOOT: 1s /if solar panel > 30°C 15s
+
+ # ----- SLEEP MODE -----
+  # Connected jumper RX + GND = disable sleep mode
+  sleep_pin: GPIO03 #RX control deepsleep whit jumper
+
+#-------------------------------------------
+# GEIGER-MULLER COUNTER
+#-------------------------------------------
+# Source: https://www.electroschematics.com/diy-geiger-counter/
+#-------------------------------------------
+# Tube
+#-------------------------------------------
+# Specifications:
+ # Model:                        J305 2023 
+ # Datasheet:                    https://www.pascalchour.fr/ressources/cgm/chine_cgm.pdf
+  # Radiation:                   β, γ 
+  # Range:                       20mR/h ~ 120mR/h
+  # Sensivity Gamma Radiation:   0.1 MeV
+  # 60CO and 137CS:              44cps/mR/h ?
+  # Voltage:                     380 ~ 450V (glass tube recommend 380V) (Initial 350V / Destroy 550V) 
+  # Working Current:             0.015 ~ 0.02 mA
+  # Dead time:                   ? (180 ~ 190µs)
+  # Resistor:                    5.1M
+  # CPM Gamma Conversion Factor: 0.00812037
+  # Lenght and Diameter:         107 +/- 3mm x 10mm +/- 0.5mm
+  # Item weight:                 18g
+  # Made in:                     China
+  # Material:                    Glass, Tin oxide Cathode, Coaxial cylindrical thin shell structure(Wall density 50±10cg/cm2),Application of pulse type halogen tube
+  # Application temperature:     -40°C ~ 55°C
+  # Background:                  25cpm
+  # Lifespan:                    >1*109 pulse
+
+#-------------------------------------------
+# Radioactivity values
+# Source: https://www.pascalchour.fr/ressources/cgm/cgm_en.html
+#-------------------------------------------
+# The normal radioactivity values measured in CPM vary from tube to tube (and also from place to place). 
+# It is generally accepted that values between 0 and 50CPM (typically, 20 to 50CPM for an SBM20) correspond to the ambient radioactivity.
+# Based on the value of 1mSv.year, the maximum hourly value (rate generally displayed on GMC) should be around 0.114µSv.
+# 1.14µSv.h,  populations must be sheltered
+# > 5.7µSv.h  population must be evacuated
+# > 11.4µSv.h iodines must be dispensed
+
+# Alert on mi config value >0.81µSv/h >100cpm
+
+#-------------------------------------------
+# Calculate correct value:
+# Source: https://sites.google.com/site/diygeigercounter/technical/gm-tubes-supported (method 2)
+#-------------------------------------------
+ # Tube background:
+  # SBM-20: 32
+  # M4011:  32
+  # J305:   25
+   
+ # Energy value source: https://iot-devices.com.ua/en/technical-note-how-to-calculate-the-conversion-factor-for-geiger-tube-sbm20/
+  # Energy value Ra226 (average):        0.6495 MeV
+  # Energy value Co60:                   0.6617 MeV  
+  # Energy value CS137 (average):        1.2529 MeV
+   # J305
+   # Find energy ratio Ra226 to Cs60:    0.6617 / 0.6495 = 0.9816
+   # Corresponding value CPS at 1 mR/h:  44 * 0.9816 = 43cps/mR/h 
+
+  # Gamma Sensitivity Ra226:             44cps/mR/h (SBM-20 = 29, J305 = 44, M4011 = 27             )
+  # Gamma Sensitivity Co60:              43cps/mR/h (                        M4011 = 22, LND712 = 18)
+  # Gamma Sensitivity CS137:             23cps/mR/h (SBM-20 = 18,                                   )
+  # Averga isotopes:                     (44+43+23)/3  = 36.667 CPS / mR/h
+  # Multiply counts per second by 60:    36.667 x 60   = 2200   CPM / mR/h
+  # absorption rate for air:             8.77 
+  # So finally CPM is divided by 
+  # the absorption rate µSv:             2200 / 8.77 = 250.855µSv/h
+  # inverse multiply filter lambda:      0.003986µSv
+   # https://devices.esphome.io/devices/geiger-counter (65cps/(μR/s)) : factor: 0.00812037037037 and -12 background offset (this is simillar value as above).
+
+  ra226: "44.0"
+  co60: "43.0"
+  cs137: "23.0"
+
+  air_absorption: "8.77"
+  # Final formula: 1 / ((((ra226 + co60 + cs137) / 3) * 60) / air_absorption)
+
+#-------------------------------------------
+# Gaiger-muller counter module:
+# Source: https://github.com/SensorsIot/Geiger-Counter-RadiationD-v1.1-CAJOE-
+# https://www.youtube.com/watch?v=K28Az3-gV7E
+#-------------------------------------------
+# Module: RadiationD-v1.1-CAJOE-
+ # Specifications: Voltage 4.5 ~ 6V / Voltage range tube: 330~600V / measure range 20mR/h~120mR/h γ X-ray and 100 ～ 1800 degeneracy/min · cm2 soft β For radiation
+  # Calibrations: 
+   # Source: https://github.com/SensorsIot/Geiger-Counter-RadiationD-v1.1-CAJOE-/blob/master/En_Calibration_GMv1.1.pdf
+   # Connected Jump to J4 test and probe whit multimter on J2 VCC and GND
+   # Whit multimter:
+    # Formula: Vout=Vread*((Rprobe+Rvoltmeter)/Rvoltmeter)
+     # Vout       = Voltage tube (J305 380 ~ 450V)
+     # Vread      = J2 point 51V
+     # Rprobe     = (R33 and R9 ~ R11) 6x10MΩ = 60MΩ
+     # Rvoltmeter = 10MΩ (Whit divider (https://www.youtube.com/watch?v=rW7y8tdnjlM and https://ohmslawcalculator.com/voltage-divider-calculator))
+     # Vout       = 51V * ((50 + 10)/10) = 357V
+     # Corrected voltage = Vread = 54V whit trimmer R100 = 378V original board. Modification see below
+
+  # Scheme: https://github.com/SensorsIot/Geiger-Counter-RadiationD-v1.1-CAJOE-/blob/master/Sch__Geiger%20Counter%20Kit-v1.1.pdf
+  #         https://github.com/SensorsIot/Geiger-Counter-RadiationD-v1.1-CAJOE-/blob/master/Geiger%20Counter%20Diagram.pdf
+  # Circuit: connected P3 header 5V/GND/VIN - pulse pin
+   # Note: ESP32 only VP-GPIO36 or VN-GPIO39 high impedance pin
+  # Modifications: Remove all component to audio jack (R32, P100, R34, U80B, U110)
+  #                Remove NE555 create buzzer sound (reducer power consumption)(R20, C22, IC2, C66, J1, R23, D23)
+  #                Remove Led indicate power
+  #                Remove HV NE555 timer pwm pulse whit esp8266 + remove all restor connected to timer (R1, R2, C5, R5, Q1)
+  #                Change R4 3KΩ to 1kΩ reducer power
+  #                Change R100 to 1Ω resistor
+
+   # BUZZER SOUND
+    # Replace NPN S8050 to PNP 3906
+    # Rotate the speaker change polarity J1 connected to GND
+    # PNP connected to battery 
+
+   # CUSTOM BOOST MODULE:
+    #                        10mH            10nF/1kV           10nF/1kV
+    # VCC (2.5 ~ 3.3V)     +--L1----+-------+---C1---+--------+---C3---+--------+
+    #                               |       |        |        |        |        |
+    #                               |       |        ˄        |        ˄        |
+    #                        1kΩ  MPSA42   ES1J     ES1J     ES1J     ES1J     ES1J
+    # PWM (13.5 ~ 19.5kHz) >--R1----Q1      D1       D2       D3       D4       D5          10MΩ 10MΩ 10MΩ 10MΩ 10MΩ
+    #                               ˅       ˅        |        ˅        |        ˅        +---R3---R4---R5---R6---R7--->TEST POINT (55-60V 10MΩ MULTIMETER)
+    #                               |       |        |        |        |        |        |
+    # GND                  |--------+-------+--------+---C2---+--------+---C4---+---R2---+---> +CATHODA GEIGER TUBE (380 ~ 440V)
+    #                                                 10nF/1kV          10nF/1kV   10MΩ
+
+  # Modification board see link.
+   # Source: Boost Voltage:       https://hackaday.io/project/187553-compact-low-power-geiger-counter/log/211706-boosting-voltage
+   #         Geiger pen:          https://hackaday.io/project/187553-compact-low-power-geiger-counter 
+   #         Geiger whit ESP8266: https://hackaday.io/project/12933-esp8266-geiger-counter
+   #         Geiger solar:        https://www.mdpi.com/2412-382X/6/3/27 
+  # Power consumption: 2.8mA. 3V3
+
+  geiger_pulse_pin: GPIO01 # D7
+  geiger_pwm_pin: GPIO14   # D5
+  geiger_buz_pin: GPIO12   # D6
+
+ # Variabile PWM frequnecy whit voltage in 13.5 ~ 19.5Hz (out 350 ~ 440V)
+  minimum_freq: '13500.0'
+  vcc_threshold_high: "3.3"
+  vcc_threshold_low: "2.5"
+
+#-------------------------------------------
+# GPIO Asocciate
+#-------------------------------------------
+# BMP280                      D1, D2
+# Display                     D1, D2
+# I2C Enable                  D8 GPIO15
+
+# Button Reset                RST
+# Button                      D3 GPIO0 / 
+
+# Status Led                  D4 GPIO02
+
+# Geiger pwm                  D5 GPIO14
+# Geiger pulse                D6 GPIO12
+# Geiger Buzzer               GPIO01 TX
+
+# USB present                 GPIO10
+
+# LDR                         D7 GPIO13
+# LDR measure                 GPO09 (capacitor dutytime)
+
+# Sleep prevent               GPIO03 RX
+
+# Battery                     VCC
+
+#-------------------------------------------
+# JUMPER PINOUT
+#-------------------------------------------
+ # - Speaker ON
+ # - Deep Sleep OFF
+
+ #   GND | RX | NO | BUZ | BUZ
+ #   -------------------------
+ #    °    °    °  | °     ° |
+ #    °    °    °  | °     ° |
+ #   -------------------------
+ #   VCC | TX | NO | NO  | NO
+
+ # - Speaker OFF
+ # - Deep Sleep ON
+
+ #   GND | RX | NO | BUZ | BUZ
+ #   -------------------------
+ #   | °    ° |  °   °     ° 
+ #     °    °    ° | °     ° |
+ #   -------------------------
+ #   VCC | TX | NO | NO  | NO
+
+#-------------------------------------------
+# PROTOCOLS
+#-------------------------------------------
+ # ----- PROTOCOLS PINS -----
+  # i2c
+  i2c_sda_pin: GPIO04
+  i2c_scl_pin: GPIO05
+
+ # ----- PROTOCOLS SETTINGS -----
+i2c:
+  sda: "$i2c_sda_pin"
+  scl: "$i2c_scl_pin"
+  scan: True
+
+#-------------------------------------------
+# ESP Main settings
+#-------------------------------------------
+esphome:
+  name: env-dosimeter
+  platformio_options:
+    board_build.flash_mode: dio # releasing GPIO09 and GPIO10
+    board_build.f_cpu: 80000000L # set cpu clock 80mhz
+  project:
+    name: "studiotiim.env-dosimeter"
+    version: 2024.01.3.0.0
+
+  on_boot:
+    - priority: 1100
+      then:
+        - lambda: |-
+            pinMode(12, INPUT);
+            digitalWrite(12, LOW);
+
+    - priority: 900.0
+      then:
+        # Wake up info
+        - lambda: |-
+            id(wake_up_reason) = ESP.getResetInfoPtr()->reason; 
+        # Thanks: https://www.homeassistant-cz.cz/viewtopic.php?t=257&hilit=ldo&sid=40796e1ff02dc925e2c1f1bd375a9918&start=20
+        # POWER ON:        0
+        # POWER ON REBOOT: 2
+        # OTA UPDATE:      4
+        # WAKE DEEP SLEEP: 5
+        # RESET:           6
+
+        - delay: 50ms
+        - component.update: wakeup_temp
+    - priority: 800.0
+      then:
+        if:
+          condition:
+            not:
+              lambda: "return id(wake_up_reason) == 5;"
+          then:
+            switch.turn_on: i2c_enable
+
+    - priority: 200.0
+      then:
+        - switch.turn_on: geiger_enable_switch
+        - if:
+            condition:
+              - binary_sensor.is_on: charger
+            then:
+              - wifi.enable:
+              - wait_until:
+                  condition:
+                    - wifi.connected:
+                  timeout: 20s
+              - delay: 100ms
+              - component.update: signal
+
+    - priority: -200.0
+      then:
+        - binary_sensor.template.publish:
+            id: online_status
+            state: True
+        #- switch.turn_on: ldr_measure
+        - if:
+            condition:
+              not: 
+                lambda: "return id(wake_up_reason) == 5;"
+            then:
+              - delay: 8s
+              - switch.turn_on: ldr_measure
+
+  on_shutdown:
+    - priority: -801.0 # tested more settings the server does not always receive the value
+      then:
+        - component.update: up_time
+        - binary_sensor.template.publish:
+            id: online_status
+            state: False
+    - then:
+        - switch.turn_off: i2c_enable
+        - switch.turn_off: ldr_measure
+        - light.turn_off: pwm_light
+        #- lambda: |-
+        #    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
+        #    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
+        #    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
+        #    pinMode(4, INPUT);
+
+esp8266:
+  board: esp12e # 12F
+
+logger:
+  #level: INFO
+  # Hidden warning: 
+    # [00:00:00][W][component:204]: Component xxxxxx took a long time for an operation (x.xx s).
+    # [00:00:00][W][component:205]: Components should block for at most 20-30ms.
+    # Source: https://github.com/esphome/issues/issues/4717
+  logs:
+    component: ERROR
+  tx_buffer_size: 128
+
+  # UART LOG disable, pin is used
+  baud_rate: 0
+
+#-------------------------------------------
+# MQTT
+# https://mqtt-explorer.com/
+#-------------------------------------------
+mqtt:
+  broker: '192.168.31.212'
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  discovery: true
+  reboot_timeout: 120s
+#  discovery_retain: false
+  birth_message:
+    topic: $device_name/status_on
+    payload: online
+  will_message:
+    topic: $device_name/status_off
+    payload: offline
+# Ota prevent sleep
+  on_message:
+    - topic: $device_name/ota_mode_on
+      payload: 'ON'
+      then:
+        - deep_sleep.prevent: deep_sleep_component
+        - logger.log: "OTA ON"
+    - topic: $device_name/ota_mode_off
+      payload: 'OFF'
+      then:
+        - logger.log: "OTA OFF"
+        - deep_sleep.allow: deep_sleep_component
+
+ota:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  #power_save_mode: light
+  enable_on_boot: disable
+  manual_ip:
+    static_ip: 192.168.31.194
+    gateway: 192.168.31.1
+    subnet: 255.255.255.0
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "$device_name Hotspot"
+    password: "passdosimeter"
+
+# captive_portal:
+
+#-------------------------------------------
+# EXTERNAL COMPONENT
+# I2C: setup priority 600
+  # // float get_setup_priority() const override { return setup_priority::BUS; }
+  # float get_setup_priority() const override { return setup_priority::DATA; }
+#-------------------------------------------
+external_components:
+  #- source: custom_component/i2c
+  - source: custom_component
+
+#-------------------------------------------
+# DEEP SLEEP
+#-------------------------------------------
+deep_sleep:
+  id: deep_sleep_component
+  sleep_duration: 15min
+  run_duration: 5min
+
+#-------------------------------------------
+# GLOBALS
+#-------------------------------------------
+globals:
+#-------------------------------------------
+# Set wake up 
+#-------------------------------------------
+  - id: wake_up_reason
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+#-------------------------------------------
+# send first data geiger after boot in cache
+#-------------------------------------------
+
+#-------------------------------------------
+# SCRIPTS
+#-------------------------------------------
+script:
+#-------------------------------------------
+# PWM variable versus voltage
+# Thanks: https://www.speaktothegeek.co.uk/2023/01/esphome-fan-v3-variable-speed-pwm-and-temperature-control/
+#-------------------------------------------
+  - id: set_freq_pwm
+    mode: restart
+    then:
+      - output.esp8266_pwm.set_frequency:
+          id: pwm_output
+          frequency: !lambda |-
+            if (id(vcc_power).state >= ${vcc_threshold_high}) {
+              return 19500;
+            }
+            else {
+              float calc_frequency = ((19500.0 - ${minimum_freq}) / (${vcc_threshold_high} - ${vcc_threshold_low})) * (id(vcc_power).state - ${vcc_threshold_low}) + ${minimum_freq};
+              return calc_frequency;
+            }
+      - component.update: pwm_freq_temp
+
+#-------------------------------------------
+# Brightness variable versus LDR
+#-------------------------------------------
+  - id: set_brightness_ldr
+    mode: restart
+    then:
+      light.turn_on:
+        id: oledlight
+        brightness: !lambda |-
+          if (id(ldr_time).state >= ${ambient_threshold_high}) {
+            return 1;
+          }
+          else {
+            float calc_brightness = ((1.0 - ${minimum_display_brightness}) / (${ambient_threshold_high} - ${ambient_threshold_low})) * (id(ldr_time).state - ${ambient_threshold_low}) + ${minimum_display_brightness};
+            return calc_brightness;
+          }
+        transition_length: 1.0s
+
+#-------------------------------------------
+# Geiger state off 10s before sleep
+#-------------------------------------------
+  - id: geiger_state_off
+    mode: restart
+    then:
+        - delay: 10s
+        - binary_sensor.template.publish:
+            id: geiger_enable_state
+            state: False
+
+#-------------------------------------------
+# STATUS LED 
+# orange led (boot/error/wifi conneted)
+#-------------------------------------------
+status_led:
+  pin:
+    number: "$status_pin"
+    inverted: true # light on when mcu online
+
+#-------------------------------------------
+# Interval measure
+#-------------------------------------------
+interval:
+  # component display brightness update loop
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            - binary_sensor.is_on: charger
+            # - binary_sensor.is_on: sleep_mode
+          then:
+            - switch.turn_on: ldr_measure
+
+  # reset pulses after 1 minute
+  - interval: 60s
+    startup_delay: 0.1s
+    then:
+        - sensor.template.publish:
+            id: radiation_pow
+            state: !lambda "return ((1 / (((($ra226 + $co60 + $cs137) / 3) * 60) / $air_absorption)) * id(total_pulses).state);"
+        - pulse_meter.set_total_pulses:
+            id: radiation_cpm
+            value: 0
+        - if:
+            condition:
+              binary_sensor.is_off: charger
+            then:
+              - switch.turn_off: geiger_enable_switch
+        - wifi.enable:
+        # mqtt connected and send state go to deepsleep
+        - wait_until:
+            condition:
+              and:
+                - wifi.connected:
+                - mqtt.connected:
+            timeout: 20s
+        - if:
+            condition:
+              mqtt.connected:
+            then:
+              - logger.log: 
+                  format: "MQTT CONNECTED"
+                  level: warn
+            else:
+              - logger.log: 
+                  format: "MQTT NOT CONNECTED!"
+                  level: warn
+        - delay: 100ms
+        - component.update: signal
+        - if:
+            condition:
+              or:
+                - binary_sensor.is_on: charger
+                - binary_sensor.is_on: sleep_mode
+            then:
+              - deep_sleep.prevent: deep_sleep_component
+              - logger.log: 
+                  format: "PREVENT DEEPSLEEP USB OR SLEEP JUMPER"
+                  level: warn
+            else:
+              - binary_sensor.template.publish:
+                  id: online_status
+                  state: False
+              - delay: 1s
+              - deep_sleep.enter: deep_sleep_component
+
+#-------------------------------------------
+# SENSORS
+#-------------------------------------------
+sensor:
+#-------------------------------------------
+# Wifi signal component
+#-------------------------------------------
+  - platform: wifi_signal
+    name: "${friendly_name} Signal"
+    id: "signal"
+    filters:
+      filter_out: "-31.0"
+    update_interval: 60s
+
+#-------------------------------------------
+# Run time MCU
+#-------------------------------------------
+  - platform: uptime
+    name: ${friendly_name} Uptime
+    accuracy_decimals: 1
+    unit_of_measurement: s
+    update_interval: 60s
+    id: up_time
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: wt32_uptime
+            state: !lambda |-
+              int seconds = round(id(up_time).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds /  60;
+              return (
+                (days ? to_string(days) + "d " : "") +
+                (hours ? to_string(hours) + "h " : "") +
+                (to_string(minutes) + "m")
+              ).c_str();
+
+#-------------------------------------------
+# LDR - time
+#-------------------------------------------
+  - platform: duty_time
+    id: ldr_duty
+    sensor: ldr_on
+    restore: false
+    internal: True
+    last_time:
+      id: ldr_time
+      name: "${friendly_name} LDR time"
+      on_value:
+        then:
+          - script.execute: set_brightness_ldr
+
+#-------------------------------------------
+# WakeUP sensor
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Wake Up Pin"
+    id: wakeup_temp
+    accuracy_decimals: 0
+    update_interval: never
+    #internal: True
+    lambda: return (id(wake_up_reason));
+    entity_category: diagnostic
+
+#-------------------------------------------
+# Battery sensor - VCC
+#-------------------------------------------
+  - platform: adc
+    pin: "$battery_pin"
+    name: "${friendly_name} Battery VCC"
+    accuracy_decimals: 2
+    unit_of_measurement: "V"
+    update_interval: 10s
+    icon: mdi:battery-charging-100
+    id: vcc_power
+    entity_category: diagnostic
+    on_value:
+      then:
+        - sensor.template.publish:
+            id: batlevel
+            state: !lambda 'return x;'
+        - script.execute: set_freq_pwm
+
+# Battery percentage
+  - platform: template
+    name: "${friendly_name} Battery"
+    accuracy_decimals: 0
+    unit_of_measurement: "%"
+    update_interval: never
+    filters:
+      - calibrate_linear:
+          - 2.5 -> 0
+          - 3.345 -> 100
+      - filter_out: 0.0
+      # No value lower than 0
+      - lambda: 'return max((float)0.0, x);'
+      # No value greater than 100
+      - lambda: 'return min((float)100.0, x);'
+    icon: mdi:battery
+    id: batlevel
+    device_class: battery
+    entity_category: diagnostic
+
+#-------------------------------------------
+# Temperature a humidity sensor - AHT10
+#-------------------------------------------
+  - platform: aht10
+#    update_interval: 30s
+    temperature:
+      name: "${friendly_name} AHT Temperature"
+      id: aht_temp
+      accuracy_decimals: 1
+      filters:
+        #- offset: -0.5
+    humidity:
+      name: "${friendly_name} Humidity"
+      id: aht_humidity
+      accuracy_decimals: 1
+      filters:
+#        - offset: 8.0
+
+#-------------------------------------------
+# Temperature a Pressure sensor - BMP280
+#-------------------------------------------
+##BMP 280 sensor Pressure
+  - platform: bmp280
+#    iir_filter: 16x
+#    temperature:
+#      id: bmp_temp
+#      name: "${friendly_name} BMP280 Temperature"
+#      oversampling: 16x
+ #     internal: true
+    pressure:
+      name: "${friendly_name} Pressure"
+      oversampling: 16x
+    address: 0x77
+    #update_interval: 10s
+
+#-------------------------------------------
+# Geiger counter
+#-------------------------------------------
+  - platform: pulse_meter
+    pin:
+      number: $geiger_pulse_pin
+    id: radiation_cpm
+    internal: true
+    name: "${friendly_name} Radiation Count"
+    unit_of_measurement: 'CPM'
+    internal_filter_mode: PULSE
+    #accuracy_decimals: 0
+    #count_mode:
+    #  rising_edge: DISABLE
+    #  falling_edge: INCREMENT
+    icon: mdi:radioactive
+    #update_interval: 10s
+    # internal_filter: 190us
+    filters:
+      - lambda: return x * (1.0/60.0);
+    total:
+      name: "${friendly_name} Radiation Count"
+      id: total_pulses
+      unit_of_measurement: 'cpm'
+    on_value:
+      then:
+        switch.turn_on: buzzer_sound
+#-------------------------------------------
+# Radiation power - µSv/h
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Radiation Power"
+    id: radiation_pow
+    icon: mdi:radioactive
+    unit_of_measurement: 'µSv/h'
+    accuracy_decimals: 3
+    update_interval: never
+    #lambda: return {"0"};
+    filters:
+      filter_out: nan
+
+#-------------------------------------------
+# Radiation Dose - µSv
+#-------------------------------------------
+  - platform: integration
+    name: "${friendly_name} Radiation Dose"
+    unit_of_measurement: "µSv"
+    sensor: radiation_pow # link entity id to the values above
+    icon: "mdi:radioactive"
+    accuracy_decimals: 3
+    id: radiation_dose
+    time_unit: min # integrate values every next minute
+    filters:
+      # obtained dose. Converting from uSv/hour into uSv/minute: [uSv/h / 60] OR [uSv/h * 0.0166666667].
+      - lambda: return x / 60; 
+
+#-------------------------------------------
+# Frequency - Actual
+#-------------------------------------------
+  - platform: template
+    id: pwm_freq_temp
+    name: "${friendly_name} Frequency"
+    lambda: |-
+      if (id(geiger_enable_state).state) {
+        return ((7500 * id(vcc_power).state - 5250) * 0.001); //equation curve y = 7500x-5250
+      } else {
+        return 0;
+      }
+    unit_of_measurement: kHz
+    icon: mdi:square-wave
+    entity_category: diagnostic
+
+#-------------------------------------------
+# SWITCHES
+#-------------------------------------------
+switch:
+#-------------------------------------------
+# LDR - measure
+#-------------------------------------------
+  - platform: gpio
+    internal: True
+    pin: $ldr_measure_pin
+    id: ldr_measure
+    on_turn_on:
+      then:
+        #- sensor.duty_time.reset: ldr_time
+        - delay: 2.0s
+        - switch.turn_off: ldr_measure
+
+#-------------------------------------------
+# Buzzer - sound
+#-------------------------------------------
+  - platform: gpio
+    internal: True
+    pin: 
+      number: $geiger_buz_pin
+    id: buzzer_sound
+    restore_mode: ALWAYS_OFF 
+    on_turn_on:
+      then:
+        if:
+          condition:
+            switch.is_on: volume
+          then:
+            - delay: 1ms
+            - switch.turn_off: buzzer_sound
+          else:
+            - switch.turn_off: buzzer_sound
+
+#-------------------------------------------
+# I2C - Turn on
+#-------------------------------------------
+  - platform: gpio
+    name: "${friendly_name} I²C Bus"
+    id: i2c_enable
+    entity_category: config
+    restore_mode: ALWAYS_OFF
+    pin: 
+      number: $i2c_enable_pin
+
+#-------------------------------------------
+# Geiger pwm enable switch
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Radiation Measure"
+    icon: "mdi:radioactive"
+    id: geiger_enable_switch
+    restore_mode: ALWAYS_OFF
+    optimistic: True
+    on_turn_on:
+      then:
+        light.turn_on: pwm_light
+    on_turn_off:
+      then:
+        light.turn_off: pwm_light
+
+#-------------------------------------------
+# Volume UP
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Volume UP"
+    icon: "mdi:volume-high"
+    id: volume
+    restore_mode: ALWAYS_OFF
+    optimistic: True
+
+#-------------------------------------------
+# BINARY SENSORS
+#-------------------------------------------
+binary_sensor:
+#-------------------------------------------
+# LDR - measure on
+#-------------------------------------------
+  - platform: gpio
+    name: LDR on
+    id: ldr_on
+    pin: $ldr_pin
+    internal: True
+
+#-------------------------------------------
+# Geiger enable sensor
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Geiger Enable"
+    icon: "mdi:radioactive"
+    id: geiger_enable_state
+    entity_category: Diagnostic
+    publish_initial_state: False
+
+#-------------------------------------------
+# Deep Sleep Disable - Jumper
+#-------------------------------------------
+  - platform: gpio
+    name: "${friendly_name} Deep Sleep"
+    pin: 
+      number: $sleep_pin
+      mode:
+        input: True
+        pullup: True
+      inverted: True
+    icon: "mdi:sleep"
+    id: sleep_mode
+    entity_category: Diagnostic
+    publish_initial_state: True
+    # on_state:
+    #  - deep_sleep.prevent: deep_sleep_component
+
+#-------------------------------------------
+# USB present
+# enabled prevent deepsleep
+#-------------------------------------------
+  - platform: gpio
+    pin: 
+      number: "$usb_present_pin"
+    name: "${friendly_name} USB Present"
+    entity_category: diagnostic
+    id: charger
+    icon: "mdi:usb-port"
+    publish_initial_state: False
+    on_state:
+      then:
+        - deep_sleep.prevent: deep_sleep_component
+        - wifi.enable:
+
+#-------------------------------------------
+# Button 1
+# additional funcionality is flash mode
+#-------------------------------------------
+  - platform: gpio
+    id: button1
+    pin: 
+      number: $button1_pin
+      # inverted: True
+    name: "${friendly_name} Button"
+    filters:
+      - invert:
+      - delayed_on: 40ms
+      - delayed_off: 40ms
+    on_multi_click:
+    # Double click volume up
+    - timing:
+        - ON for at most 1s
+        - OFF for at most 0.4s
+        - ON for at most 1s
+        - OFF for at least 0.2s
+      then:
+        if: 
+          condition:
+            switch.is_on: volume
+          then:
+            - switch.turn_off: volume
+          else:
+            - switch.turn_on: volume
+    # Click oled display
+    - timing:
+        - ON for at most 0.5s
+        - OFF for at least 1s
+      then:
+        if: 
+          condition:
+            light.is_on: oledlight
+          then:
+            - light.turn_off: oledlight
+            - lambda: id(oled).set_contrast(0.0);
+            - lambda: id(oled).turn_off();
+          else:
+            - lambda: id(oled).turn_on();
+            - switch.turn_on: ldr_measure
+    # Hold sleep eneter
+    on_click: 
+      - min_length: 1000ms
+        max_length: 4000ms
+        then:
+          - deep_sleep.enter: deep_sleep_component
+    entity_category: diagnostic
+
+#-------------------------------------------
+# Online state mcu
+# MQTT
+#-------------------------------------------
+  - platform: template
+    id: online_status
+    name: "${friendly_name} Status"
+    icon: "mdi:power-standby"
+    entity_category: diagnostic
+
+#-------------------------------------------
+# TEXT SENSORS
+#-------------------------------------------
+text_sensor:
+#-------------------------------------------
+# UPTIME - convert to h:m:s
+#-------------------------------------------
+  - platform: template
+    name: ${friendly_name} Uptime Human
+    id: wt32_uptime
+    entity_category: diagnostic
+    icon: mdi:clock-start
+
+#-------------------------------------------
+# BUTTONS
+#-------------------------------------------
+button:
+#-------------------------------------------
+# Manaul sleep press
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Enter Sleep"
+    entity_category: config
+    on_press:
+      - deep_sleep.enter: deep_sleep_component
+
+#-------------------------------------------
+# Safe mode - fixed OTA update
+#-------------------------------------------
+  - platform: safe_mode
+    name: "${friendly_name} Safe Mode"
+
+#-------------------------------------------
+# LDR - measure button
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Brightness Measure"
+    icon: mdi:brightness-6
+    on_press:
+      then:
+        - switch.turn_on: ldr_measure
+
+#-------------------------------------------
+# TIME COMPONENT
+#-------------------------------------------
+time:
+  - platform: sntp
+    id: esptime
+    timezone: "Europe/Bratislava"
+
+#-------------------------------------------
+# LIGHTS
+#-------------------------------------------
+light:
+#-------------------------------------------
+# Control PWM Geiger
+#-------------------------------------------
+  - platform: monochromatic
+    id: pwm_light
+    icon: mdi:square-wave
+    output: pwm_output
+    name: "${friendly_name} pwm"
+    gamma_correct: 1.0 # gamma correction 1.0 = 100% = 100% brightness or pwm 0.5 = 50% pwm square wave pwm
+    entity_category: config
+    internal: True
+    on_turn_on:
+      then:
+        - script.stop: geiger_state_off
+        - light.turn_on:
+            id: pwm_light
+            brightness: 50%
+        - script.execute: set_freq_pwm
+        - binary_sensor.template.publish:
+            id: geiger_enable_state
+            state: True
+    on_turn_off:
+        - script.execute: geiger_state_off
+
+#-------------------------------------------
+# OLED brightness control
+#-------------------------------------------
+  - platform: monochromatic
+    name: "${friendly_name} Brightness Display"
+    output: oled_bc
+    id: oledlight
+    icon: "mdi:monitor"
+    on_turn_on:
+      if:
+        condition:
+          wifi.connected:
+        then:
+          - lambda: id(oled).turn_on();
+          - switch.turn_on: ldr_measure
+    on_turn_off:
+      if:
+        condition:
+          wifi.connected:
+        then:
+        - lambda: id(oled).set_contrast(0.0);
+        - lambda: id(oled).turn_off();
+
+#-------------------------------------------
+# OUTPUTS
+#-------------------------------------------
+output:
+#-------------------------------------------
+# Control PWM Geiger
+#-------------------------------------------
+  - platform: esp8266_pwm
+    pin: $geiger_pwm_pin
+    frequency: 20000 Hz
+    id: pwm_output
+
+#-------------------------------------------
+# OLED brightness control
+#-------------------------------------------
+  - platform: template
+    id: oled_bc
+    type: float
+    write_action:
+      then:
+        - lambda: id(oled).set_contrast(state);
+    min_power: 0.0
+    max_power: 1.0
+
+#-------------------------------------------
+# DISPLAYS
+#-------------------------------------------
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x32"
+    id: oled
+    #reset_pin: D8
+    address: 0x3C
+#    invert: true
+    #rotation: 180°
+    pages:
+    #-------------------------------------------
+    # PAGE 1 - PAGE RUN
+    #-------------------------------------------
+      - id: pagerun
+        lambda: |-
+          //--------------------------------------------------------------------------
+          // START PAGE
+          //--------------------------------------------------------------------------
+          //--------------------------------------------------------------------------
+          // Radiation Dose vs Time
+          //--------------------------------------------------------------------------
+          static int p = 0;
+          p++;
+          if ((p % 2) == 0) {
+            it.printf(0, -4, id(studiotiim), TextAlign::TOP_LEFT, "%s", (id(wt32_uptime).state).c_str());
+          } 
+          else {
+            it.printf(0, -4, id(studiotiim), TextAlign::TOP_LEFT, "%.3fµSv", id(radiation_dose).state);
+          }
+          //--------------------------------------------------------------------------
+          // INTERNAL TEMPERATURE AND HUMIDITY SENSOR - AHT10
+          //--------------------------------------------------------------------------
+          it.printf(0, 22, id(studiotiim), TextAlign::BOTTOM_LEFT, "%.0f©", id(aht_temp).state);
+          it.printf(0, 34, id(studiotiim), TextAlign::BOTTOM_LEFT,  isnan(id(aht_humidity).state) ? "?" : "%.0f%%", id(aht_humidity).state);
+          
+          //--------------------------------------------------------------------------
+          // GEIGER
+          //--------------------------------------------------------------------------
+          if (id(geiger_enable_state).state == true) {
+            if (isnan(id(radiation_pow).state)) {
+              static int y = 0;
+              y++;
+              if ((y % 2) == 0) {
+                it.print(50, 32, id(font_large), TextAlign::BASELINE_LEFT, "LOAD");
+              } 
+              else {
+              }
+            }  
+            else {
+              it.printf(47, 32, id(font_large), TextAlign::BASELINE_LEFT, "%.3f", id(radiation_pow).state);
+            }
+          } else {
+            it.print(50, 32, id(font_large), TextAlign::BASELINE_LEFT, "OFF");
+          }
+          it.print(128, 32, id(sievert), TextAlign::BOTTOM_RIGHT, "µSv/h");
+          
+          //--------------------------------------------------------------------------
+          // RADIATION ICON AND ALERT (ALERT BLINKING ICON)
+          //--------------------------------------------------------------------------
+          if (id(radiation_pow).state >= 0.8) {
+            static int i = 0;
+            i++;
+            if ((i % 2) == 0)
+              it.printf(22, 34, id(icon_large), TextAlign::BOTTOM_LEFT, "\U000F043C");
+            else
+              it.printf(22, 33, id(icon_large), TextAlign::BOTTOM_LEFT, "\U000F11CF");
+          }
+          else {
+            it.printf(22, 34, id(icon_large), TextAlign::BOTTOM_LEFT, "\U000F043C");
+          }
+
+          //--------------------------------------------------------------------------
+          // VOLUME
+          //--------------------------------------------------------------------------
+          if (id(volume).state == true) {
+            it.printf(105, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F057F");
+          }
+          else {
+          }
+
+          //--------------------------------------------------------------------------
+          // WIFI SIGNAL SENSOR - mdi print
+          //--------------------------------------------------------------------------
+          int signal_wifi = int(id(signal).state);   //convert state to int
+      
+          if (signal_wifi < 0 && signal_wifi >= -50) {
+            it.printf(119, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F08BE");
+          }
+          else if (signal_wifi < -50 && signal_wifi >= -70) {
+            it.printf(119, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F08BD");
+          }
+          else if (signal_wifi < -70 && signal_wifi >= -100) {
+            it.printf(119, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F08BC");
+          }
+          else {
+            it.printf(119, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F08BF");
+          }
+
+          //--------------------------------------------------------------------------
+          // BATTERY SENSOR - mdi print
+          //--------------------------------------------------------------------------
+          float bat_level = (id(batlevel).state);  //convert batlevel state to float
+      
+          if (id(charger).state) {
+          static int e = 0;
+          e++;
+            if ((e % 2) == 0) {
+            //>100%
+              if (bat_level >= 100) {
+                it.printf(128, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F0079");
+              }
+              //>75%
+              else if (bat_level < 100 && bat_level >= 75) {
+                it.printf(128, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F0081");
+              }
+              //>50%
+              else if (bat_level < 75 && bat_level >= 50) {
+                it.printf(128, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F007F");
+              }
+              //>25%
+              else if (bat_level < 50 && bat_level >= 25) {
+                it.printf(128, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F007B");
+              }
+              //>0%
+              else {
+                it.printf(128, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F007A");
+              }
+            }
+            else {
+            }
+          }
+          else {
+            //>100%
+            if (bat_level >= 100) {
+              it.printf(128, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F0079");
+            }
+            //>75%
+            else if (bat_level < 100 && bat_level >= 75) {
+              it.printf(128, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F0081");
+            }
+            //>50%
+            else if (bat_level < 75 && bat_level >= 50) {
+              it.printf(128, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F007F");
+            }
+            //>25%
+            else if (bat_level < 50 && bat_level >= 25) {
+              it.printf(128, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F007B");
+            }
+            //>0%
+            else {
+              it.printf(128, 0, id(icon), TextAlign::TOP_RIGHT, "\U000F007A");
+            }
+          }
+
+font:
+  - file: 'fonts/studiotiim.ttf'
+    id: studiotiim
+    size: 14
+    glyphs:
+      ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'M', 'S', 'T', ' ', 'a', 'd', 'i', 'n', 'o', 't', 'u', '©', '%', '.', 'v', 'µ', '?', ':', m,]
+
+  - file: 'fonts/studiotiim.ttf'
+    id: sievert
+    size: 16
+    glyphs:
+      [S, 'v', 'µ', 'h', '/',]
+
+  - file: 'fonts/font_rg.ttf'
+    id: font_large
+    size: 38
+    glyphs:
+      ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'L', 'O', 'A', ' ', 'D', 'F', '.']
+#  - file: 'fonts/arial.ttf'
+#    id: font3
+#    size: 13
+#    glyphs:
+#      ['&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+#       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+ #      'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+#       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+#       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+#       'u', 'v', 'w', 'x', 'y', 'z','å', 'ä', 'ö', '/','º','µ','³']
+
+#  - file: 'fonts/materialdesignicons.ttf'
+  - file: 'fonts/icon2024.ttf'
+    id: icon
+    size: 14
+    glyphs: [
+      "\U000F08BF", # no wifi
+      "\U000F08BC", # wifi low
+      "\U000F08BD", # mwifi middle
+      "\U000F08BE", # wifi high
+
+      "\U000F057F", # speaker
+
+      "\U000F0079", # full
+      "\U000F0081", # 75
+      "\U000F007F", # 50
+      "\U000F007B", # 25
+      "\U000F007A", # empty
+      "\U000F0241", # flash
+      "\U000F0904", # sleep
+      ]
+
+#  - file: 'fonts/materialdesignicons-webfont.ttf'
+  - file: 'fonts/icon2024.ttf'
+    id: icon_large
+    size: 24 
+    glyphs: [
+      "\U000F043C",# radioactive
+      "\U000F11CF",# alert
+      ]
