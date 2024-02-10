@@ -45,7 +45,7 @@ Potrebný Hardwér:
 Úpravy HW:
 Radiation modul:
 - Samotná doska má mnoho úprav predovšetkým z dôvodu umiestnenia do malej krabičky najdôležitejšia úrpava je ale zosilnovač napätia podľa schémy nižšie:
-![hv](image/clipboard2.jpg)
+![hv](image/Clipboard02.jpg)
   odstranuje sa (R1, R2, C5, R5, Q1) a R4 je nahradene za 1kohm rezistor
   
 
