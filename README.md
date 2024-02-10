@@ -72,4 +72,6 @@ Všetko potrebné v YAML súbore. Zdrojový kód som sa snažil doplniť o všet
 Doporučujem prebehnuť celý kód
 
 Prevedenie:
-
+![Main photo of the assistant](image/20240210_160241.jpg)
+![Main photo of the assistant](image/20240210_164619.jpg)
+![Main photo of the assistant](image/20240210_164701.jpg)
