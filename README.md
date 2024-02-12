@@ -30,7 +30,11 @@ Funkcie:
     -  Stav hlasitosti pípnutia bez ikony = krátke / s ikonou reproduktoru = dlhé pípnutie
     -  Stav pripojenia wifi
     -  Stav batérie až pod klesnutie 3,36V zobrazí pod 100%
-  
+
+  Správanie sa pri spustení:
+   - Reset: spustí displej načita hodnotu po 60s pripojí k wifi odošle a uspí.
+   - USB pripojené: spustí displej pripojí sa k wifi načita beži bez obemdzenia.
+   - Wakeup: spustí sa bez displeja a i2c zariadení načita hodnotu po 60s pripojí k wifi odošle a uspí.
 
 Potrebný Hardwér:
 - Krabička z 10000mAh power banky (alebo iná)
