@@ -52,7 +52,7 @@ substitutions:
   friendly_name: env-dosimeter
   device_name: env-dosimeter
   created_by: "StudioTiiM 2022-2024"
-  device_description: "Dozimeter Modul RadiationD-v1.1 (CAJOE) on battery whit display"
+  device_description: "Dosimeter RadiationD-v1.1 battery and display"
 
 #-------------------------------------------
 # DEFINE PINS AND VARIABILES
@@ -144,7 +144,7 @@ substitutions:
    # Interface: I2C address: 0x3C (pullup 4.7K internal)
    # Modifications: unsolder ldo 662k
    # Power consumption: 
-  i2c_enable_pin: GPIO15 # D8
+  i2c_en_pin: GPIO15 # D8
 
  # ----- LEDS -----
   # Modul: Status led
@@ -160,7 +160,7 @@ substitutions:
     # Chip: DW01 + 8205A
     # Specification: overcharge 4.25V / discharge 2.5V / current 1A / overcurrent 2.5 A
     # Power consumption: standby 3.6µA
-  battery_pin: VCC
+  batt_pin: VCC
 
  # ----- CHARGING -----
   # Module: USB TP4056 whitout BMS
@@ -171,8 +171,8 @@ substitutions:
      # Calculate: Ibat = Vprog / Rprog * 1200 = 1V / 2.2k * 1200 = 545mA
     # Resiszor current limiter R400 changed PPTC fuse R110 1.1A
    # Circuit 3: GND ->   -> GPIO -> 10k -> USB VCC
-  usb_present_pin: GPIO10
-  battery_low: "3.0" # 3.0V battery show only low battery on display 
+  usb_pin: GPIO10
+  batt_low: "3.0" # 3.0V battery show only low battery on display 
 
  # ----- LDO REGULATORS -----
   # Module: holtek HT7833
@@ -185,11 +185,11 @@ substitutions:
   # Module: Photodiode 3mm 5516 5-16k
    # Circuit: VCC -> Photodiode -> GPIO -> 10k -> GND
   ldr_pin: GPIO13
-  ldr_measure_pin: GPIO09
+  ldr_meas_pin: GPIO09
   # Settings display brigthness option
-  ambient_threshold_low: "1.769" # 
-  ambient_threshold_high: "2.0" # 
-  minimum_display_brightness: "0.0" # 
+  ambient_low: "1.769" # 
+  ambient_high: "2.0" # 
+  min_brightness: "0.0" # 
 
  # ----- BUTTONS -----
   # Module: SMD Push button 4pin 6x6x3.1mm
@@ -197,14 +197,7 @@ substitutions:
    # Circuit: GND -> Button -> GPIO + 10kΩ -> VCC
   # This button is also Flash button when reset button hold
   button1_pin: GPIO0 # D3
-  button_reset: RST
-
- # ----- TEMPERATURE / PRESSURE SENSORS -----
-  # Module: BMP280 - pressure / temperature
-   # Specifications: Voltage: 1.71 ~ 3.6V / Operational Range: Temperature: -40 ~ +85°C Pressure: 300~1100 hPa / Accuracy: Temperature: +-0.01°C Pressure: +-1Pa
-   # Circuit: Interface: I2C address: SDO LOW : 0x76 (SDO HIGH: 0x77)
-   # Power consumption: 0.027mA 1Hz sampling rate (Peak: 1.12mA)
-   # UPDATE AFTER BOOT: 1s /if solar panel > 30°C 15s
+  # button_reset: RST
 
  # ----- SLEEP MODE -----
   # Connected jumper RX + GND = disable sleep mode
@@ -282,7 +275,7 @@ substitutions:
   co60: "43.0"
   cs137: "23.0"
 
-  air_absorption: "8.77"
+  air_absorp: "8.77"
   # Final formula: 1 / ((((ra226 + co60 + cs137) / 3) * 60) / air_absorption)
 
 #-------------------------------------------
@@ -344,9 +337,9 @@ substitutions:
   geiger_buz_pin: GPIO12   # D6
 
  # Variabile PWM frequnecy whit voltage in 13.5 ~ 19.5Hz (out 350 ~ 440V)
-  minimum_freq: '13500.0'
-  vcc_threshold_high: "3.3"
-  vcc_threshold_low: "2.5"
+  min_freq: '13500.0'
+  vcc_high: "3.3"
+  vcc_low: "2.5"
 
 #-------------------------------------------
 # GPIO Asocciate
@@ -408,7 +401,7 @@ substitutions:
 i2c:
   sda: "$i2c_sda_pin"
   scl: "$i2c_scl_pin"
-  scan: True
+  # scan: True
 
 #-------------------------------------------
 # ESP Main settings
@@ -450,11 +443,11 @@ esphome:
             not:
               lambda: "return id(wake_up_reason) == 5;"
           then:
-            switch.turn_on: i2c_enable
+            switch.turn_on: i2c_en
 
     - priority: 200.0
       then:
-        - switch.turn_on: geiger_enable_switch
+        - switch.turn_on: geiger_en_switch
         - if:
             condition:
               - binary_sensor.is_on: charger
@@ -470,7 +463,7 @@ esphome:
     - priority: -200.0
       then:
         - binary_sensor.template.publish:
-            id: online_status
+            id: online
             state: True
         #- switch.turn_on: ldr_measure
         - if:
@@ -479,18 +472,18 @@ esphome:
                 lambda: "return id(wake_up_reason) == 5;"
             then:
               - delay: 8s
-              - switch.turn_on: ldr_measure
+              - switch.turn_on: ldr_meas
 
   on_shutdown:
     - priority: -801.0 # tested more settings the server does not always receive the value
       then:
         - component.update: up_time
         - binary_sensor.template.publish:
-            id: online_status
+            id: online
             state: False
     - then:
-        - switch.turn_off: i2c_enable
-        - switch.turn_off: ldr_measure
+        - switch.turn_off: i2c_en
+        - switch.turn_off: ldr_meas
         - light.turn_off: pwm_light
         #- lambda: |-
         #    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
@@ -610,29 +603,29 @@ script:
       - output.esp8266_pwm.set_frequency:
           id: pwm_output
           frequency: !lambda |-
-            if (id(vcc_power).state >= ${vcc_threshold_high}) {
+            if (id(vcc_power).state >= ${vcc_high}) {
               return 19500;
             }
             else {
-              float calc_frequency = ((19500.0 - ${minimum_freq}) / (${vcc_threshold_high} - ${vcc_threshold_low})) * (id(vcc_power).state - ${vcc_threshold_low}) + ${minimum_freq};
-              return calc_frequency;
+              float calc_freq = ((19500.0 - ${min_freq}) / (${vcc_high} - ${vcc_low})) * (id(vcc_power).state - ${vcc_low}) + ${min_freq};
+              return calc_freq;
             }
       - component.update: pwm_freq_temp
 
 #-------------------------------------------
 # Brightness variable versus LDR
 #-------------------------------------------
-  - id: set_brightness_ldr
+  - id: set_brightness
     mode: restart
     then:
       light.turn_on:
         id: oledlight
         brightness: !lambda |-
-          if (id(ldr_time).state >= ${ambient_threshold_high}) {
+          if (id(ldr_time).state >= ${ambient_high}) {
             return 1;
           }
           else {
-            float calc_brightness = ((1.0 - ${minimum_display_brightness}) / (${ambient_threshold_high} - ${ambient_threshold_low})) * (id(ldr_time).state - ${ambient_threshold_low}) + ${minimum_display_brightness};
+            float calc_brightness = ((1.0 - ${min_brightness}) / (${ambient_high} - ${ambient_low})) * (id(ldr_time).state - ${ambient_low}) + ${min_brightness};
             return calc_brightness;
           }
         transition_length: 1.0s
@@ -640,12 +633,12 @@ script:
 #-------------------------------------------
 # Geiger state off 10s before sleep
 #-------------------------------------------
-  - id: geiger_state_off
+  - id: geiger_off
     mode: restart
     then:
         - delay: 10s
         - binary_sensor.template.publish:
-            id: geiger_enable_state
+            id: geiger_en_state
             state: False
 
 #-------------------------------------------
@@ -669,7 +662,7 @@ interval:
             - binary_sensor.is_on: charger
             # - binary_sensor.is_on: sleep_mode
           then:
-            - switch.turn_on: ldr_measure
+            - switch.turn_on: ldr_meas
 
   # reset pulses after 1 minute
   - interval: 60s
@@ -677,7 +670,8 @@ interval:
     then:
         - sensor.template.publish:
             id: radiation_pow
-            state: !lambda "return ((1 / (((($ra226 + $co60 + $cs137) / 3) * 60) / $air_absorption)) * id(total_pulses).state);"
+            state: !lambda "return ((1 / (((($ra226 + $co60 + $cs137) / 3) * 60) / $air_absorp)) * id(total_pulses).state);"
+        - component.update: radiation_count
         - pulse_meter.set_total_pulses:
             id: radiation_cpm
             value: 0
@@ -685,7 +679,7 @@ interval:
             condition:
               binary_sensor.is_off: charger
             then:
-              - switch.turn_off: geiger_enable_switch
+              - switch.turn_off: geiger_en_switch
         - wifi.enable:
         # mqtt connected and send state go to deepsleep
         - wait_until:
@@ -699,11 +693,11 @@ interval:
               mqtt.connected:
             then:
               - logger.log: 
-                  format: "MQTT CONNECTED"
+                  format: "MQTT CONNECT"
                   level: warn
             else:
               - logger.log: 
-                  format: "MQTT NOT CONNECTED!"
+                  format: "MQTT NOT CONNECT"
                   level: warn
         - delay: 100ms
         - component.update: signal
@@ -715,11 +709,11 @@ interval:
             then:
               - deep_sleep.prevent: deep_sleep_component
               - logger.log: 
-                  format: "PREVENT DEEPSLEEP USB OR SLEEP JUMPER"
+                  format: "PREVENT SLEEP USB OR JUMPER"
                   level: warn
             else:
               - binary_sensor.template.publish:
-                  id: online_status
+                  id: online
                   state: False
               - delay: 1s
               - deep_sleep.enter: deep_sleep_component
@@ -735,17 +729,18 @@ sensor:
     name: "${friendly_name} Signal"
     id: "signal"
     filters:
-      filter_out: "-31.0"
+      filter_out: 31
     update_interval: 60s
 
 #-------------------------------------------
 # Run time MCU
 #-------------------------------------------
   - platform: uptime
-    name: ${friendly_name} Uptime
+    # name: ${friendly_name} Uptime
     accuracy_decimals: 1
     unit_of_measurement: s
     update_interval: 60s
+    internal: True
     id: up_time
     on_raw_value:
       then:
@@ -777,7 +772,7 @@ sensor:
       name: "${friendly_name} LDR time"
       on_value:
         then:
-          - script.execute: set_brightness_ldr
+          - script.execute: set_brightness
 
 #-------------------------------------------
 # WakeUP sensor
@@ -795,7 +790,7 @@ sensor:
 # Battery sensor - VCC
 #-------------------------------------------
   - platform: adc
-    pin: "$battery_pin"
+    pin: "$batt_pin"
     name: "${friendly_name} Battery VCC"
     accuracy_decimals: 2
     unit_of_measurement: "V"
@@ -873,7 +868,6 @@ sensor:
       number: $geiger_pulse_pin
     id: radiation_cpm
     internal: true
-    name: "${friendly_name} Radiation Count"
     unit_of_measurement: 'CPM'
     internal_filter_mode: PULSE
     #accuracy_decimals: 0
@@ -886,12 +880,25 @@ sensor:
     filters:
       - lambda: return x * (1.0/60.0);
     total:
-      name: "${friendly_name} Radiation Count"
+      name: "${friendly_name} Radiation Total"
       id: total_pulses
       unit_of_measurement: 'cpm'
     on_value:
       then:
-        switch.turn_on: buzzer_sound
+        switch.turn_on: sound
+
+#-------------------------------------------
+# Radiation Count - CPM update after 60s
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Radiation Count"
+    id: radiation_count
+    icon: mdi:radioactive
+    unit_of_measurement: 'cpm'
+    accuracy_decimals: 0
+    update_interval: never
+    lambda: 'return id(total_pulses).state;'
+
 #-------------------------------------------
 # Radiation power - µSv/h
 #-------------------------------------------
@@ -928,7 +935,7 @@ sensor:
     id: pwm_freq_temp
     name: "${friendly_name} Frequency"
     lambda: |-
-      if (id(geiger_enable_state).state) {
+      if (id(geiger_en_state).state) {
         return ((7500 * id(vcc_power).state - 5250) * 0.001); //equation curve y = 7500x-5250
       } else {
         return 0;
@@ -946,13 +953,13 @@ switch:
 #-------------------------------------------
   - platform: gpio
     internal: True
-    pin: $ldr_measure_pin
-    id: ldr_measure
+    pin: $ldr_meas_pin
+    id: ldr_meas
     on_turn_on:
       then:
         #- sensor.duty_time.reset: ldr_time
         - delay: 2.0s
-        - switch.turn_off: ldr_measure
+        - switch.turn_off: ldr_meas
 
 #-------------------------------------------
 # Buzzer - sound
@@ -961,7 +968,7 @@ switch:
     internal: True
     pin: 
       number: $geiger_buz_pin
-    id: buzzer_sound
+    id: sound
     restore_mode: ALWAYS_OFF 
     on_turn_on:
       then:
@@ -970,20 +977,20 @@ switch:
             switch.is_on: volume
           then:
             - delay: 1ms
-            - switch.turn_off: buzzer_sound
+            - switch.turn_off: sound
           else:
-            - switch.turn_off: buzzer_sound
+            - switch.turn_off: sound
 
 #-------------------------------------------
 # I2C - Turn on
 #-------------------------------------------
   - platform: gpio
     name: "${friendly_name} I²C Bus"
-    id: i2c_enable
+    id: i2c_en
     entity_category: config
     restore_mode: ALWAYS_OFF
     pin: 
-      number: $i2c_enable_pin
+      number: $i2c_en_pin
 
 #-------------------------------------------
 # Geiger pwm enable switch
@@ -991,7 +998,7 @@ switch:
   - platform: template
     name: "${friendly_name} Radiation Measure"
     icon: "mdi:radioactive"
-    id: geiger_enable_switch
+    id: geiger_en_switch
     restore_mode: ALWAYS_OFF
     optimistic: True
     on_turn_on:
@@ -1030,7 +1037,7 @@ binary_sensor:
   - platform: template
     name: "${friendly_name} Geiger Enable"
     icon: "mdi:radioactive"
-    id: geiger_enable_state
+    id: geiger_en_state
     entity_category: Diagnostic
     publish_initial_state: False
 
@@ -1058,7 +1065,7 @@ binary_sensor:
 #-------------------------------------------
   - platform: gpio
     pin: 
-      number: "$usb_present_pin"
+      number: "$usb_pin"
     name: "${friendly_name} USB Present"
     entity_category: diagnostic
     id: charger
@@ -1112,7 +1119,7 @@ binary_sensor:
             - lambda: id(oled).turn_off();
           else:
             - lambda: id(oled).turn_on();
-            - switch.turn_on: ldr_measure
+            - switch.turn_on: ldr_meas
     # Hold sleep eneter
     on_click: 
       - min_length: 1000ms
@@ -1126,7 +1133,7 @@ binary_sensor:
 # MQTT
 #-------------------------------------------
   - platform: template
-    id: online_status
+    id: online
     name: "${friendly_name} Status"
     icon: "mdi:power-standby"
     entity_category: diagnostic
@@ -1160,8 +1167,8 @@ button:
 #-------------------------------------------
 # Safe mode - fixed OTA update
 #-------------------------------------------
-  - platform: safe_mode
-    name: "${friendly_name} Safe Mode"
+#  - platform: safe_mode
+#    name: "${friendly_name} Safe Mode"
 
 #-------------------------------------------
 # LDR - measure button
@@ -1171,7 +1178,7 @@ button:
     icon: mdi:brightness-6
     on_press:
       then:
-        - switch.turn_on: ldr_measure
+        - switch.turn_on: ldr_meas
 
 #-------------------------------------------
 # TIME COMPONENT
@@ -1198,16 +1205,16 @@ light:
     internal: True
     on_turn_on:
       then:
-        - script.stop: geiger_state_off
+        - script.stop: geiger_off
         - light.turn_on:
             id: pwm_light
             brightness: 50%
         - script.execute: set_freq_pwm
         - binary_sensor.template.publish:
-            id: geiger_enable_state
+            id: geiger_en_state
             state: True
     on_turn_off:
-        - script.execute: geiger_state_off
+        - script.execute: geiger_off
 
 #-------------------------------------------
 # OLED brightness control
@@ -1223,7 +1230,7 @@ light:
           wifi.connected:
         then:
           - lambda: id(oled).turn_on();
-          - switch.turn_on: ldr_measure
+          - switch.turn_on: ldr_meas
     on_turn_off:
       if:
         condition:
@@ -1296,7 +1303,7 @@ display:
           //--------------------------------------------------------------------------
           // GEIGER
           //--------------------------------------------------------------------------
-          if (id(geiger_enable_state).state == true) {
+          if (id(geiger_en_state).state == true) {
             if (isnan(id(radiation_pow).state)) {
               static int y = 0;
               y++;
@@ -1304,15 +1311,18 @@ display:
                 it.print(50, 32, id(font_large), TextAlign::BASELINE_LEFT, "LOAD");
               } 
               else {
+                it.printf(50, 32, id(font_large), TextAlign::BASELINE_LEFT, "%.0f", id(total_pulses).state);
+                it.print(128, 32, id(sievert), TextAlign::BOTTOM_RIGHT, "cpm");
               }
             }  
             else {
               it.printf(47, 32, id(font_large), TextAlign::BASELINE_LEFT, "%.3f", id(radiation_pow).state);
+              it.print(128, 32, id(sievert), TextAlign::BOTTOM_RIGHT, "µSv/h");
             }
           } else {
             it.print(50, 32, id(font_large), TextAlign::BASELINE_LEFT, "OFF");
           }
-          it.print(128, 32, id(sievert), TextAlign::BOTTOM_RIGHT, "µSv/h");
+          
           
           //--------------------------------------------------------------------------
           // RADIATION ICON AND ALERT (ALERT BLINKING ICON)
@@ -1423,7 +1433,7 @@ font:
     id: sievert
     size: 16
     glyphs:
-      [S, 'v', 'µ', 'h', '/',]
+      [S, 'v', 'µ', 'h', '/', c, p, m,]
 
   - file: 'fonts/font_rg.ttf'
     id: font_large
