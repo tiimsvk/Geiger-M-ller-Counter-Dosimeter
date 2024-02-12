@@ -729,7 +729,7 @@ sensor:
     name: "${friendly_name} Signal"
     id: "signal"
     filters:
-      filter_out: 31
+      filter_out: 31.0
     update_interval: 60s
 
 #-------------------------------------------
@@ -1311,7 +1311,7 @@ display:
                 it.print(50, 32, id(font_large), TextAlign::BASELINE_LEFT, "LOAD");
               } 
               else {
-                it.printf(50, 32, id(font_large), TextAlign::BASELINE_LEFT, "%.0f", id(total_pulses).state);
+                it.printf(50, 32, id(font_large), TextAlign::BASELINE_LEFT, isnan(id(total_pulses).state) ? "0" : "%.0f", id(total_pulses).state);
                 it.print(128, 32, id(sievert), TextAlign::BOTTOM_RIGHT, "cpm");
               }
             }  
