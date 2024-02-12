@@ -20,6 +20,18 @@ Funkcie:
 - Tlačidlá pre reset/ovladanie zapnutia displeja/hlasitosti zvuku/alebo prechod do sleep modu
 - Vipnutie v HA rozhraní meranie radioaktivity/meranie jasu/I2C zariadení
 
+- Zobrazenie na displeji:
+    -  Čas v prevádzke v minútach/hodinách
+    -  Celkové množstvo v uSv
+    -  Teplota
+    -  Vlhkosť
+    -  Indikátor zvýšenej(nebezpečnej nad 0.8uSv/h) rádioaktivity
+    -  CPM v prvých 60 sekundách / LOAD / pri vipnutí OFF následná aktualizácia po 60s na uSv/h
+    -  Stav hlasitosti pípnutia bez ikony = krátke / s ikonou reproduktoru = dlhé pípnutie
+    -  Stav pripojenia wifi
+    -  Stav batérie až pod klesnutie 3,36V zobrazí pod 100%
+  
+
 Potrebný Hardwér:
 - Krabička z 10000mAh power banky (alebo iná)
 - RadiationD-v1.1 (CAJOE) modul
